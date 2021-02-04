@@ -9,7 +9,7 @@ FROM UNNEST(
 ) AS day
 );
 ----------------------------------------------------------------------------
------------
+-----------To have a list of dbs by calendar day----------------------------
 drop table akshayscratchpad.mixpanel_data.daily_active_aura_dbs;
 create table akshayscratchpad.mixpanel_data.daily_active_aura_dbs
 as
@@ -27,15 +27,7 @@ select calendar_dt,
 where db_created_at is not NULL
 order by 1);
 ----------------------------------------------------------------------------
-drop table akshayscratchpad.mixpanel_data.database_create_log;
-create table akshayscratchpad.mixpanel_data.database_create_log
-as (select dbid
-, date_diff(date(calendar_dt) ,date("2019-02-01"), month) as db_running_month
-from `akshayscratchpad.mixpanel_data.daily_active_aura_dbs`
-group by 1,2
-order by 1,2);
-----------------------------------------------------------------------------
---------------------------------------------------------------------
+-----------To have a list of users with db_create_dt------------------------
 drop table akshayscratchpad.mixpanel_data.db_create_logs;
 create table akshayscratchpad.mixpanel_data.db_create_logs
 as
@@ -58,6 +50,55 @@ extract(year from a.db_destroyed_at) as db_destroy_yr
 from akshayscratchpad.mixpanel_data.daily_active_aura_dbs a
 group by 1,2,3;
 --------------------------------------------------------------------
+-----To have db create and destroy logs-----------------------------
+drop table akshayscratchpad.mixpanel_data.db_create_destroy_logsv1;
+create table akshayscratchpad.mixpanel_data.db_create_destroy_logsv1
+as
+select
+extract (year from a.calendar_dt) as yr
+,extract (month from a.calendar_dt) as mnth
+,a.email
+,c.db_created_count
+,b.db_destroyed_count
+from akshayscratchpad.mixpanel_data.daily_active_aura_dbs a
+left join akshayscratchpad.mixpanel_data.db_destroy_logs b
+on extract (month from a.calendar_dt) = b.db_destroy_mnth
+and extract (year from a.calendar_dt) = b.db_destroy_yr
+and a.email = b.email
+left join akshayscratchpad.mixpanel_data.db_create_logs c
+on extract (month from a.calendar_dt) = c.db_create_mnth
+and extract (year from a.calendar_dt) = c.db_create_yr
+and a.email = c.email
+--where a.email = "aslak@hu.ma"
+group by 1,2,3,4,5;
+---------------------------------------------------------------
+-----------To get user history with calendar_dt----------------
+drop table akshayscratchpad.mixpanel_data.active_user_historyv1;
+create table akshayscratchpad.mixpanel_data.active_user_historyv1
+  as
+select yr,mnth
+,email
+,db_created_count
+,db_destroyed_count
+,total_db_created_till_dt
+,case when total_db_destroyed_till_dt is null then 0 else total_db_destroyed_till_dt end as total_db_destroyed_till_dt
+,rank() over (partition by email order by yr,mnth) as user_order
+from
+(select yr,mnth
+,email
+,case when db_created_count is null then 0 else db_created_count end as db_created_count
+,case when db_destroyed_count is null then 0 else db_destroyed_count end as db_destroyed_count
+,sum(db_created_count) over (partition by email order by yr,mnth rows between unbounded preceding and current row) as total_db_created_till_dt
+,sum(db_destroyed_count) over (partition by email order by yr,mnth rows between unbounded preceding and current row) as total_db_destroyed_till_dt
+from akshayscratchpad.mixpanel_data.db_create_destroy_logsv1
+--where email = "akshay.urmaliya@neotechnology.com"
+)a;
+----------------------------------------------------------------
+
+
+
+----------------------------------------------------------------
+---------------------Deprecated Queries-------------------------
 drop table akshayscratchpad.mixpanel_data.db_create_destroy_logs;
 create table akshayscratchpad.mixpanel_data.db_create_destroy_logs
 as
@@ -74,7 +115,7 @@ and a.db_create_yr = b.db_destroy_yr
 and a.email = b.email
 --where a.email = "aslak@hu.ma"
 group by 1,2,3,4,5;
-----------------------------------------------------------
+---------------------------------------------------------------
 drop table akshayscratchpad.mixpanel_data.active_users;
 create table akshayscratchpad.mixpanel_data.active_users
 as
