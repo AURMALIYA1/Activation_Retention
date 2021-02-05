@@ -94,10 +94,87 @@ from akshayscratchpad.mixpanel_data.db_create_destroy_logsv1
 --where email = "akshay.urmaliya@neotechnology.com"
 )a;
 ----------------------------------------------------------------
-
-
-
+-----------To get complete user history-------------------------
+drop table akshayscratchpad.mixpanel_data.complete_user_history;
+create table akshayscratchpad.mixpanel_data.complete_user_history
+as
+select  a.*
+,case when a.total_db_created_till_dt>a.total_db_destroyed_till_dt OR user_order=1 then yr else null end as user_active_yr
+,case when a.total_db_created_till_dt>a.total_db_destroyed_till_dt OR user_order=1 then mnth else null end as user_active_mnth
+from akshayscratchpad.mixpanel_data.active_user_historyv1 a
+--where email = "julien.grobbelaar@neotechnology.com"
+order by 1,2
+--------------------------------------------------------------------------------
+-------------------Visit_log table for tracking users---------------------------
+drop table akshayscratchpad.mixpanel_data.user_logv1;
+create table akshayscratchpad.mixpanel_data.user_logv1
+as
+select
+user_active_yr
+,user_active_mnth
+,email
+--,total_db_created_till_dt
+--,total_db_destroyed_till_dt
+,(user_active_yr - 2019)*12 + (user_active_mnth - 2) as visit_month
+from akshayscratchpad.mixpanel_data.complete_user_history
+where user_active_yr is not null
+order by 1,2;
+---------------------------------------------------------------------------------
+--------------------ACTUAL RETENTION LOGIC AND NUMBERS---------------------------
+---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
+---------------To create lag timelapse for New/Retained/reactivated------------------
+drop table akshayscratchpad.mixpanel_data.lag_timelapse;
+create table akshayscratchpad.mixpanel_data.lag_timelapse
+as
+select email, visit_month , lag(visit_month, 1) over (partition BY email ORDER BY email, visit_month) as lag_month
+from akshayscratchpad.mixpanel_data.user_logv1;
+------------------------------------------------------------------------------------------
+drop table akshayscratchpad.mixpanel_data.time_diff_lag;
+create table akshayscratchpad.mixpanel_data.time_diff_lag
+as select email, visit_month, visit_month - lag_month as time_diff
+from akshayscratchpad.mixpanel_data.lag_timelapse ;
+------------------------------------------------------------------------------------------
+drop table akshayscratchpad.mixpanel_data.cust_categorized_lag;
+create table akshayscratchpad.mixpanel_data.cust_categorized_lag
+as select email, visit_month
+, case when time_diff = 1 then "retained"
+       when time_diff > 1 then "reactivated"
+       when time_diff is null then "new" else null end as cust_type
+       from akshayscratchpad.mixpanel_data.time_diff_lag ;
+------------------------------------------------------------------------------------------
+---------------To create lead timelapse for Retained/Churned/reactivated------------------
+drop table akshayscratchpad.mixpanel_data.lead_timelapse;
+create table akshayscratchpad.mixpanel_data.lead_timelapse
+as
+select email, visit_month , lead(visit_month, 1) over (partition BY email ORDER BY email, visit_month) as lead_month
+from akshayscratchpad.mixpanel_data.user_logv1;
+---------------------------------------------------------------------------
+drop table akshayscratchpad.mixpanel_data.time_diff_lead;
+create table akshayscratchpad.mixpanel_data.time_diff_lead
+as select email, visit_month, lead_month - visit_month as time_diff
+from akshayscratchpad.mixpanel_data.lead_timelapse ;
+---------------------------------------------------------------------------
+drop table akshayscratchpad.mixpanel_data.cust_categorized_lead;
+create table akshayscratchpad.mixpanel_data.cust_categorized_lead
+as select email, visit_month
+, case when time_diff = 1 then "retained"
+       when time_diff > 1 then "churned"
+       when time_diff is null then "NA" else null end as cust_type
+       from akshayscratchpad.mixpanel_data.time_diff_lead ;
 ----------------------------------------------------------------
+drop table `akshayscratchpad.mixpanel_data.churned_user_month`;
+create table `akshayscratchpad.mixpanel_data.churned_user_month`
+as
+select a.email
+,visit_month as visit_month_orig
+,cust_type
+,case when cust_type = "churned" then visit_month+1 else visit_month end as visit_month
+ from akshayscratchpad.mixpanel_data.cust_categorized_lead a ;
+--where email = "julien.grobbelaar@neotechnology.com"
+order by 2
+
+
 ---------------------Deprecated Queries-------------------------
 drop table akshayscratchpad.mixpanel_data.db_create_destroy_logs;
 create table akshayscratchpad.mixpanel_data.db_create_destroy_logs
