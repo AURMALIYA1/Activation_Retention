@@ -1,14 +1,14 @@
 -- Mixpanel data from Pageview table
 with mp_pageview as (
     select distinct m.email_address as email
-    , first_value(device_id ignore nulls) over (partition by email_address order by time) as device_id
-    , first_value(mp_country_code ignore nulls) over (partition by email_address order by time) as mp_country
-    , first_value(region ignore nulls) over (partition by email_address order by time) as mp_region
-    , first_value(utm_source ignore nulls) over (partition by email_address order by time) as first_touch_utm_source
-    , first_value(utm_medium ignore nulls) over (partition by email_address order by time) as first_touch_utm_medium
-    , first_value(utm_campaign ignore nulls) over (partition by email_address order by time) as first_touch_utm_campaign
-    , first_value(initial_referrer ignore nulls) over (partition by email_address order by time) as first_touch_referrer
-    , first_value(initial_referring_domain ignore nulls) over (partition by email_address order by time) as first_touch_referring_domain
+    , first_value(device_id) over (partition by email_address order by time) as device_id
+    , first_value(mp_country_code) over (partition by email_address order by time) as mp_country
+    , first_value(region) over (partition by email_address order by time) as mp_region
+    , first_value(utm_source) over (partition by email_address order by time) as first_touch_utm_source
+    , first_value(utm_medium) over (partition by email_address order by time) as first_touch_utm_medium
+    , first_value(utm_campaign) over (partition by email_address order by time) as first_touch_utm_campaign
+    , first_value(initial_referrer) over (partition by email_address order by time) as first_touch_referrer
+    , first_value(initial_referring_domain) over (partition by email_address order by time) as first_touch_referring_domain
     , rank() over (partition by email_address order by time) as time_rank
     from `neo4j-cloud-misc.user_summary_tables.user_mapping_table` m
     join `neo4j-cloud-misc.mixpanel_exports_dev.page_view` e
@@ -93,15 +93,18 @@ select l.email, l.userkey
     , mp_country, mp_region
     , first_touch_referrer, first_touch_referring_domain 
     , first_touch_utm_source, first_touch_utm_medium, first_touch_utm_campaign
-    , case when first_touch_utm_campaign like "%display%" then "Display"
-        when lower(first_touch_utm_source) like "%email%" or lower(first_touch_utm_medium) like "%email%"then "Email"
+    -- Channel Grouping - logic might be updated overtime
+    , case when first_touch_utm_campaign like "%display%" and first_touch_utm_medium not like "%paid-social%" then "Display"
+        when lower(first_touch_utm_source) like "%email%" or lower(first_touch_utm_medium) like "%email%" or lower(first_touch_referrer) like "%message.neo4j.com%" then "Email"
         when lower(first_touch_utm_campaign) like "%search%" or (first_touch_utm_source = "google" and first_touch_utm_medium in ("cpc", "ppc")) then "Paid Search"
+        when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%"
+            or lower(first_touch_referrer) like "%facebook%" or lower(first_touch_referrer) like "%linkedin%" or lower(first_touch_referrer) like "%twitter%" or lower(first_touch_referrer) = "https://t.co/")
+            and (lower(first_touch_utm_medium) not like "%paid%" and lower(first_touch_utm_medium) not like "%cpc%" and lower(first_touch_utm_medium) not like "%ppc%" ) then "Owned Social"
         when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%")
-            and (lower(first_touch_utm_medium) not like "paid" and lower(first_touch_utm_medium) not like "cpc" and lower(first_touch_utm_medium) not like "ppc" ) then "Owned Social"
-        when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%")
-            and (lower(first_touch_utm_medium) like "paid" or lower(first_touch_utm_medium) like "cpc" or lower(first_touch_utm_medium) like "ppc" ) then "Paid Social"
-        when lower(first_touch_referrer) = "google" and lower(first_touch_utm_source) is null then "Organic Search"
-        when lower(first_touch_referring_domain) is not null and lower(first_touch_referrer) != "$direct" and lower(first_touch_referrer) not like "%neo4j.com%" then "External Referral"
+            and (lower(first_touch_utm_medium) like "%paid%" or lower(first_touch_utm_medium) like "%cpc%" or lower(first_touch_utm_medium) like "%ppc%" ) then "Paid Social"
+        when lower(first_touch_referring_domain) = "www.google.com" and lower(first_touch_utm_source) is null then "Organic Search"
+        when lower(first_touch_referring_domain) is not null and lower(first_touch_referrer) != "$direct" and lower(first_touch_referrer) not like "%neo4j.com%" 
+            and lower(first_touch_referrer) not like "%facebook%" and lower(first_touch_referrer) not like "%linkedin%" and lower(first_touch_referrer) not like "%twitter%" and lower(first_touch_referrer) not like "%t.co%" then "External Referral"
         when lower(first_touch_referring_domain) like "%neo4j.com%" then "Internal Referral"
         when first_touch_referrer = "$direct" then "Direct"
         end as first_touch_channel
@@ -143,4 +146,3 @@ select l.email, l.userkey
 )
 select *
 from final
-
