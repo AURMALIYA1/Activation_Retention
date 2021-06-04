@@ -102,7 +102,7 @@ select l.email, l.userkey
             and (lower(first_touch_utm_medium) not like "%paid%" and lower(first_touch_utm_medium) not like "%cpc%" and lower(first_touch_utm_medium) not like "%ppc%" ) then "Owned Social"
         when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%")
             and (lower(first_touch_utm_medium) like "%paid%" or lower(first_touch_utm_medium) like "%cpc%" or lower(first_touch_utm_medium) like "%ppc%" ) then "Paid Social"
-        when lower(first_touch_referring_domain) = "www.google.com" and lower(first_touch_utm_source) is null then "Organic Search"
+        when lower(first_touch_referring_domain) like "%www.google.com%" and lower(first_touch_utm_source) is null then "Organic Search"
         when lower(first_touch_referring_domain) is not null and lower(first_touch_referrer) != "$direct" and lower(first_touch_referrer) not like "%neo4j.com%" 
             and lower(first_touch_referrer) not like "%facebook%" and lower(first_touch_referrer) not like "%linkedin%" and lower(first_touch_referrer) not like "%twitter%" and lower(first_touch_referrer) not like "%t.co%" then "External Referral"
         when lower(first_touch_referring_domain) like "%neo4j.com%" then "Internal Referral"
