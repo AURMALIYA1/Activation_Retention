@@ -1,3 +1,4 @@
+-- get first touch attribution from neo4j.com and console Mixpanel events
 with first_touch as (
     select distinct distinct_id
     , first_value(initial_referrer) over (partition by distinct_id order by mp_processing_time_ms) as initial_referrer 
@@ -15,6 +16,7 @@ with first_touch as (
         from `neo4j-cloud-misc.mixpanel_exports_dev.aura_navigate_to`
         where project_id = "4cf820094a8c88a45ca1a474080590a2" ) T
 )
+-- logic to group first touch attribution to different channels
 , first_touch_channel as (
     select distinct distinct_id, first_visit
     -- first touch
@@ -45,11 +47,9 @@ with first_touch as (
             end as first_touch_channel
     from first_touch 
 )
+-- all visits to Aura LP and Aura Pricing Page
 , visitors as (
     select distinct p.distinct_id, first_visit, date(timestamp_millis(mp_processing_time_ms)) as visited_date, timestamp_millis(mp_processing_time_ms) as visited_time, pathname
-    , case when date(timestamp_millis(mp_processing_time_ms)) > first_visit then "Returning" 
-        when date(timestamp_millis(mp_processing_time_ms)) = first_visit then "New"
-        end as user_type
     -- first touch
     , f.initial_referrer, f.initial_referring_domain
     , f.utm_source, f.utm_medium, f.utm_campaign
@@ -89,8 +89,12 @@ with first_touch as (
     and pathname in ("https://neo4j.com/cloud/aura/", "https://neo4j.com/cloud/aura/pricing/")
     and timestamp_millis(mp_processing_time_ms) between "2021-01-01" and current_timestamp() 
 )
+-- group user activities by day to look at the last touch attribution by user by day (proxy for sessions)
 , daily_visitors as (
     select distinct distinct_id, first_visit, visited_date
+    , case when visited_date > first_visit then "Returning" 
+        when visited_date = first_visit then "New"
+        end as user_type
     , first_value(initial_referrer) over (partition by distinct_id, visited_date order by visited_time) as first_touch_referrer
     , first_value(initial_referring_domain) over (partition by distinct_id, visited_date order by visited_time) as first_touch_referring_domain
     , first_value(utm_source) over (partition by distinct_id, visited_date order by visited_time) as first_touch_utm_source
@@ -103,6 +107,7 @@ with first_touch as (
     , first_value(mp_country_code) over (partition by distinct_id, visited_date order by visited_time) as mp_country_code
     from visitors
 )
+-- user registration table
 , registers as (
     select distinct distinct_id, date(user_created_at) as registered_date
     from `neo4j-cloud-misc.aura_usage_metrics.canonical_user_list` u 
@@ -111,9 +116,8 @@ with first_touch as (
 )
 
 select v.*, case when r.registered_date is not null then 1 else 0 end as register_status
-from visitors v 
+from daily_visitors v 
 left join registers r 
 on v.distinct_id = r.distinct_id
 and v.visited_date  = r.registered_date 
-where visited_date >= "2021-05-01"
 order by 1,2,3
