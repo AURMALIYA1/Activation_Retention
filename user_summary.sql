@@ -4,11 +4,12 @@ with mp_pageview as (
     , first_value(device_id) over (partition by email_address order by time) as device_id
     , first_value(mp_country_code) over (partition by email_address order by time) as mp_country
     , first_value(region) over (partition by email_address order by time) as mp_region
-    , first_value(utm_source) over (partition by email_address order by time) as first_touch_utm_source
-    , first_value(utm_medium) over (partition by email_address order by time) as first_touch_utm_medium
-    , first_value(utm_campaign) over (partition by email_address order by time) as first_touch_utm_campaign
-    , first_value(initial_referrer) over (partition by email_address order by time) as first_touch_referrer
-    , first_value(initial_referring_domain) over (partition by email_address order by time) as first_touch_referring_domain
+    , first_value(utm_source) over (partition by email_address order by time) as utm_source
+    , first_value(utm_medium) over (partition by email_address order by time) as utm_medium
+    , first_value(utm_campaign) over (partition by email_address order by time) as utm_campaign
+    , first_value(utm_content) over (partition by email_address order by time) as utm_content
+    , first_value(initial_referrer) over (partition by email_address order by time) as initial_referrer
+    , first_value(initial_referring_domain) over (partition by email_address order by time) as initial_referring_domain
     , rank() over (partition by email_address order by time) as time_rank
     from `neo4j-cloud-misc.user_summary_tables.user_mapping_table` m
     join `neo4j-cloud-misc.mixpanel_exports_dev.page_view` e
@@ -60,9 +61,9 @@ select l.email, l.userkey
 -- live days
 , active_days as (
     select email, userkey
-    , sum(case when qualified_db > 0 then 1 else 0 end) as active_days
-    , sum(case when qualified_db > 0 and db_billing_identity in ("Direct", "GCP") then 1 else 0 end) as active_days_pro
-    , sum(case when qualified_db > 0 and db_billing_identity = "Free" then 1 else 0 end) as active_days_free
+    , sum(case when total_db > 0 then 1 else 0 end) as active_days
+    , sum(case when total_db > 0 and db_billing_identity in ("Direct", "GCP") then 1 else 0 end) as active_days_pro
+    , sum(case when total_db > 0 and db_billing_identity = "Free" then 1 else 0 end) as active_days_free
     from `neo4j-cloud-misc.user_summary_tables.daily_db_per_user`
     group by 1,2
 )
@@ -91,23 +92,32 @@ select l.email, l.userkey
     -- mixpanel
     , device_id
     , mp_country, mp_region
-    , first_touch_referrer, first_touch_referring_domain 
-    , first_touch_utm_source, first_touch_utm_medium, first_touch_utm_campaign
+    , initial_referrer as first_touch_referrer, initial_referring_domain as first_touch_referring_domain 
+    , utm_source as first_touch_utm_source, utm_medium as first_touch_utm_medium, utm_campaign as first_touch_utm_campaign, utm_content as first_touch_utm_content
     -- Channel Grouping - logic might be updated overtime
-    , case when first_touch_utm_campaign like "%display%" and first_touch_utm_medium not like "%paid-social%" then "Display"
-        when lower(first_touch_utm_source) like "%email%" or lower(first_touch_utm_medium) like "%email%" or lower(first_touch_referrer) like "%message.neo4j.com%" then "Email"
-        when lower(first_touch_utm_campaign) like "%search%" or (first_touch_utm_source = "google" and first_touch_utm_medium in ("cpc", "ppc")) then "Paid Search"
-        when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%"
-            or lower(first_touch_referrer) like "%facebook%" or lower(first_touch_referrer) like "%linkedin%" or lower(first_touch_referrer) like "%twitter%" or lower(first_touch_referrer) = "https://t.co/")
-            and (lower(first_touch_utm_medium) not like "%paid%" and lower(first_touch_utm_medium) not like "%cpc%" and lower(first_touch_utm_medium) not like "%ppc%" ) then "Owned Social"
-        when (lower(first_touch_utm_source) like "%facebook%" or lower(first_touch_utm_source) like "%linkedin%" or lower(first_touch_utm_source) like "%twitter%")
-            and (lower(first_touch_utm_medium) like "%paid%" or lower(first_touch_utm_medium) like "%cpc%" or lower(first_touch_utm_medium) like "%ppc%" ) then "Paid Social"
-        when lower(first_touch_referring_domain) like "%www.google.com%" and lower(first_touch_utm_source) is null then "Organic Search"
-        when lower(first_touch_referring_domain) is not null and lower(first_touch_referrer) != "$direct" and lower(first_touch_referrer) not like "%neo4j.com%" 
-            and lower(first_touch_referrer) not like "%facebook%" and lower(first_touch_referrer) not like "%linkedin%" and lower(first_touch_referrer) not like "%twitter%" and lower(first_touch_referrer) not like "%t.co%" then "External Referral"
-        when lower(first_touch_referring_domain) like "%neo4j.com%" then "Internal Referral"
-        when first_touch_referrer = "$direct" then "Direct"
-        end as first_touch_channel
+    , case  -- display
+            when (lower(utm_campaign) like "%display%" or lower(initial_referring_domain) like "%doubleclick%" or lower(utm_medium) = "banner") 
+                and lower(utm_medium) not like "%paid-social%" then "Display"
+            -- email
+            when lower(utm_source) like "%email%" or lower(utm_medium) like "%email%" or lower(initial_referrer) like "%message.neo4j.com%" then "Email"
+            -- paid search
+            when (lower(utm_campaign) like "%search%" or lower(utm_medium) in ("cpc", "ppc")) and (lower(utm_campaign) not like "%display%" or utm_campaign is null) then "Paid Search"
+            -- owned social
+            when (lower(utm_medium) = "social" or lower(utm_source) like "%gaggle%" or initial_referrer like "%facebook%" or initial_referrer like "%linkedin%" or initial_referrer like "%twitter%" or initial_referrer like "%//t.co%")
+                and (utm_medium = "social" or utm_medium is null or lower(utm_medium) like "%gaggle%") then "Owned Social"
+            -- paid social
+            when (lower(utm_source) like "%facebook%" or lower(utm_source) like "%linkedin%" or lower(utm_source) like "%twitter%" or lower(utm_medium) = "paid social")
+                and (lower(utm_medium) like "%paid%" or lower(utm_medium) in ("cpc", "ppc") ) then "Paid Social"
+            -- organic search
+            when (lower(initial_referring_domain) like "%google%" or lower(initial_referring_domain) like "%bing%" or lower(initial_referring_domain) like "%yandex%" or lower(initial_referring_domain) like "%baidu%" or lower(initial_referring_domain) like "%duckduckgo%")
+                and (lower(utm_medium) not in ("cpc", "ppc", "banner") or utm_medium is null) then "Organic Search"
+            -- internal referral
+            when lower(initial_referring_domain) like "%neo4j.com%" or lower(initial_referring_domain) like "%neotechnology.com%" then "Internal Referral"
+            -- external referral
+            when (lower(initial_referring_domain) is not null and lower(initial_referrer) != "$direct") or (lower(initial_referrer) = "$direct" and utm_source is not null) then "External Referral"
+            --direct
+            when initial_referrer = "$direct" then "Direct"
+            end as first_touch_channel
     -- logs
     , case when total_db_count = 0 then 0 else 1 end as status_db_created
     , case when first_query is null then 0 else 1 end as status_activation
