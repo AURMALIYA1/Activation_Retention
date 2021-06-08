@@ -7,15 +7,19 @@ with mp_pageview as (
     , first_value(utm_source) over (partition by email_address order by time) as utm_source
     , first_value(utm_medium) over (partition by email_address order by time) as utm_medium
     , first_value(utm_campaign) over (partition by email_address order by time) as utm_campaign
-    , first_value(utm_content) over (partition by email_address order by time) as utm_content
     , first_value(initial_referrer) over (partition by email_address order by time) as initial_referrer
     , first_value(initial_referring_domain) over (partition by email_address order by time) as initial_referring_domain
     , rank() over (partition by email_address order by time) as time_rank
     from `neo4j-cloud-misc.user_summary_tables.user_mapping_table` m
-    join `neo4j-cloud-misc.mixpanel_exports_dev.page_view` e
-    --join `neo4j-cloud-misc.mixpanel_exports_dev.aura_navigate_to` e
+    join 
+        (select distinct distinct_id, time, device_id, mp_country_code, region, utm_source, utm_medium, utm_campaign, initial_referrer, initial_referring_domain 
+         from `neo4j-cloud-misc.mixpanel_exports_dev.page_view` 
+         where project_id = "4cf820094a8c88a45ca1a474080590a2" -- universal prod
+        union all 
+         select distinct distinct_id, time, device_id, mp_country_code, region, utm_source, utm_medium, utm_campaign, initial_referrer, initial_referring_domain
+         from `neo4j-cloud-misc.mixpanel_exports_dev.aura_navigate_to`
+         where project_id = "4cf820094a8c88a45ca1a474080590a2") e
     on m.distinct_id = e.distinct_id
-    where project_id = "4cf820094a8c88a45ca1a474080590a2" -- universal prod
 )
 , mp_attributes as (
     select *
@@ -93,9 +97,11 @@ select l.email, l.userkey
     , device_id
     , mp_country, mp_region
     , initial_referrer as first_touch_referrer, initial_referring_domain as first_touch_referring_domain 
-    , utm_source as first_touch_utm_source, utm_medium as first_touch_utm_medium, utm_campaign as first_touch_utm_campaign, utm_content as first_touch_utm_content
+    , utm_source as first_touch_utm_source, utm_medium as first_touch_utm_medium, utm_campaign as first_touch_utm_campaign
     -- Channel Grouping - logic might be updated overtime
-    , case  -- display
+    , case  -- accounts.google.com
+            when lower(initial_referrer) like "%accounts.google.com%" and utm_medium not in ("cpc", "ppc") then "Google Oauth"
+            -- display
             when (lower(utm_campaign) like "%display%" or lower(initial_referring_domain) like "%doubleclick%" or lower(utm_medium) = "banner") 
                 and lower(utm_medium) not like "%paid-social%" then "Display"
             -- email
@@ -112,7 +118,7 @@ select l.email, l.userkey
             when (lower(initial_referring_domain) like "%google%" or lower(initial_referring_domain) like "%bing%" or lower(initial_referring_domain) like "%yandex%" or lower(initial_referring_domain) like "%baidu%" or lower(initial_referring_domain) like "%duckduckgo%")
                 and (lower(utm_medium) not in ("cpc", "ppc", "banner") or utm_medium is null) then "Organic Search"
             -- internal referral
-            when lower(initial_referring_domain) like "%neo4j.com%" or lower(initial_referring_domain) like "%neotechnology.com%" then "Internal Referral"
+            when lower(initial_referring_domain) like "%neo4j.com%" or lower(initial_referring_domain) like "%neotechnology.com%" or lower(initial_referring_domain) like "%neo4j.brand.live%" or lower(initial_referring_domain) like "%console.neo4j.io%" then "Internal Referral"
             -- external referral
             when (lower(initial_referring_domain) is not null and lower(initial_referrer) != "$direct") or (lower(initial_referrer) = "$direct" and utm_source is not null) then "External Referral"
             --direct
