@@ -100,7 +100,7 @@ select l.email, l.userkey
     , utm_source as first_touch_utm_source, utm_medium as first_touch_utm_medium, utm_campaign as first_touch_utm_campaign
     -- Channel Grouping - logic might be updated overtime
     , case  -- accounts.google.com
-            when lower(initial_referrer) like "%accounts.google.com%" and utm_medium not in ("cpc", "ppc") then "Google Oauth"
+            when lower(initial_referrer) like "%accounts.google.com%" and (utm_medium not in ("cpc", "ppc") or utm_medium is null) then "Google Oauth"
             -- display
             when (lower(utm_campaign) like "%display%" or lower(initial_referring_domain) like "%doubleclick%" or lower(utm_medium) = "banner") 
                 and lower(utm_medium) not like "%paid-social%" then "Display"
