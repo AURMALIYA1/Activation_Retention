@@ -82,7 +82,7 @@ select l.email, l.userkey
     group by 1,2
 )
 , final as (
-    select u.email, u.userkey
+    select distinct u.email, u.userkey
     , u.user_classification
     , db.account_id, db.channels
     , case when db.channels = "Free" then "Free"
