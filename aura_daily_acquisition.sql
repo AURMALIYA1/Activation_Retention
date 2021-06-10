@@ -57,7 +57,7 @@ with first_touch as (
     -- last touch
     , referrer, referring_domain
     , case  -- null
-            when referrer = "" then null 
+            when referrer = "" then "Direct or N/A"
             -- display
             when (lower(referrer) like "%campaign%display%" or lower(referrer) like "%doubleclick%" or lower(referrer) like "%utm_medium%banner%") 
                 and lower(referrer) not like "%utm_medium%paid-social%" then "Display"
@@ -78,8 +78,8 @@ with first_touch as (
             when lower(referrer) like "%neo4j.com%" or lower(referrer) like "%neotechnology.com%" then "Internal Referral"
             -- external referral
             when (lower(referrer) is not null and lower(referrer) != "$direct") or (lower(referrer) = "$direct" and lower(referrer) like "%utm_source%") then "External Referral"
-            --direct
-            when referrer = "$direct" then "Direct"
+            --direct (referrer does not contain $direct as an option, which is different from first_touch)
+            --when referrer = "$direct" then "Direct"
             end as last_touch_channel
     , mp_country_code
     from `neo4j-cloud-misc.mixpanel_exports_dev.page_view` p
@@ -115,7 +115,7 @@ with first_touch as (
     on u.email = m.email_address
 )
 
-select v.*, case when r.registered_date is not null then 1 else 0 end as register_status
+select v.*, case when r.registered_date is not null then v.distinct_id end as registered_id
 from daily_visitors v 
 left join registers r 
 on v.distinct_id = r.distinct_id
