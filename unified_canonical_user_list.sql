@@ -157,6 +157,7 @@ select l.userkey,
  group by userkey
 
 ), first_programmatic_connection as (
+-- Find the first example of a programmatic connection, IE with a driver such as the Python driver
 select l.userkey,
        min(minute) as first_programmatic_connection,
        min(case when db_billing_identity = "Free" then minute end) as first_programmatic_connection_free,
@@ -175,6 +176,7 @@ select l.userkey,
  group by userkey                             
 
 ), first_dump_upload as (
+-- Note that we only have dump upload data as of mid-march 2021
 select l.userkey,
         min(timestamp) as first_dump_upload,
         min(case when db_billing_identity = "Free" then timestamp end) as first_dump_upload_free,
@@ -287,33 +289,36 @@ select -- User metadata
         end as first_touch_channel,
 
     -- logs
-       case when total_db_count = 0 then 0 else 1 end as status_db_created,
+       case when total_db_count is NULL then 0 else 1 end as status_db_created,
        case when first_query is null then 0 else 1 end as status_activation,
        case when first_load is null then 0 else 1 end as status_load_data,
-       total_db_count, 
-       live_db_count,
+       ifnull(total_db_count,0) as total_db_count,
+       ifnull(live_db_count,0) as live_db_count,
 
-       live_free_db_count,
-       start_free_date, 
-       churn_free_date, 
-       live_days_free,
-       live_hours_free,
-       total_gb_hours_free,
+    -- Aura Free Activity Summary
+       ifnull(live_free_db_count,0) as live_free_db_count,
+       start_free_date,
+       churn_free_date,
+       ifnull(live_days_free,0) as live_days_free,
+       ifnull(live_hours_free,0) as live_hours_free,
+       ifnull(total_gb_hours_free,0) as total_gb_hours_free,
        date(first_query_free) as first_query_free_date,
        date(first_load_free) as first_load_free_date,
-       date(first_programmatic_connection_free) as first_programmatic_connection_free,
-       date(first_dump_upload_free) as first_dump_upload_free,
+       date(first_programmatic_connection_free) as first_programmatic_connection_free_date,
+       date(first_dump_upload_free) as first_dump_upload_free_date,
        case when first_query_free is not null then 1 else 0 end as first_query_free,
        case when first_load_free is not null then 1 else 0 end as first_load_free,
+       case when first_dump_upload_free is not null then 1 else 0 end as first_dump_upload_free,
 
-       live_direct_db_count,
-       live_gcp_db_count,
+    -- Aura Pro Activity Summary
+       ifnull(live_direct_db_count,0) as live_direct_db_count,
+       ifnull(live_gcp_db_count,0) as live_gcp_db_count,
        start_pro_date, 
        churn_pro_date, 
-       live_days_pro,
-       live_hours_pro,
-       total_gb_hours_pro,
-       total_revenue_dollars_pro,
+       ifnull(live_days_pro,0) as live_days_pro,
+       ifnull(live_hours_pro,0) as live_hours_pro,
+       ifnull(total_gb_hours_pro,0) as total_gb_hours_pro,
+       ifnull(total_revenue_dollars_pro,0) as total_revenue_dollars_pro,
        date(first_query_pro) as first_query_pro_date,
        date(first_load_pro) as first_load_pro_date,
        date(first_programmatic_connection_pro) as first_programmatic_connection_pro,
@@ -321,23 +326,29 @@ select -- User metadata
        case when first_query_pro is not null then 1 else 0 end as first_query_pro,
        case when first_load_pro is not null then 1 else 0 end as first_load_pro,
 
-       live_enterprise_db_count,
+    -- Aura Enterprise Activity Summary
+       ifnull(live_enterprise_db_count,0) as live_enterprise_db_count,
        start_enterprise_date, 
        churn_enterprise_date, 
-       live_hours_enterprise,
-       total_gb_hours_enterprise,
+       ifnull(live_days_enterprise,0) as live_days_enterprise,
+       ifnull(live_hours_enterprise,0) as live_hours_enterprise,
+       ifnull(total_gb_hours_enterprise,0) as total_gb_hours_enterprise,
        -- We do not have query logs for enterprise customers, hence some metrics are missing
-       --date(first_query_gds) as first_query_gds_date,
-       --date(first_load_gds) as first_load_gds_date,
-       --case when first_query_pro is not null then 1 else 0 end as first_query_gds,
-       --case when first_load_pro is not null then 1 else 0 end as first_load_gds,
+       -- I include them here as placeholders
+       --date(first_query_enterprise) as first_query_enterprise_date,
+       --date(first_load_enterprise) as first_load_enterprise_date,
+       --date(first_programmatic_connection_enterprise) as first_programmatic_connection_enterprise,
+       --date(first_dump_upload_enterprise) as first_dump_upload_enterprise,
+       --case when first_query_enterprise is not null then 1 else 0 end as first_query_enterprise,
+       --case when first_load_enterprise is not null then 1 else 0 end as first_load_enterprise,
 
-       live_gds_db_count,
+    -- Aura GDS Activity Summary
+       ifnull(live_gds_db_count,0) as live_gds_db_count,
        start_gds_date, 
        churn_gds_date, 
-       live_days_gds,
-       live_hours_gds,
-       total_gb_hours_gds,
+       ifnull(live_days_gds,0) as live_days_gds,
+       ifnull(live_hours_gds,0) as live_hours_gds,
+       ifnull(total_gb_hours_gds,0) as total_gb_hours_gds,
        date(first_query_gds) as first_query_gds_date,
        date(first_load_gds) as first_load_gds_date,
        date(first_programmatic_connection_gds) as first_programmatic_connection_gds,
