@@ -156,6 +156,33 @@ select l.userkey,
  where imputed_load_statements > 0
  group by userkey
 
+), first_programmatic_connection as (
+select l.userkey,
+       min(minute) as first_programmatic_connection,
+       min(case when db_billing_identity = "Free" then minute end) as first_programmatic_connection_free,
+       min(case when db_billing_identity = "GDS" then minute end) as first_programmatic_connection_gds,
+       min(case when db_billing_identity in ("Direct", "GCP") then minute end) as first_programmatic_connection_pro,
+  from `aura_usage_metrics.v_canonical_database_list` l
+  join `query_log_transforms.extended_user_agent_per_minute_submission_stats` s on l.dbid = s.dbid
+ where user_agent_name not in (
+                               "Embedded Session",
+                               "neo4j-browers",
+                               "neo4j-bloom",
+                               "neo4j-desktop",
+                               "neo4j-cypher-shell"
+                              )
+   and user_agent_version not in ('dev','0.0.0-dev')
+ group by userkey                             
+
+), first_dump_upload as (
+select l.userkey,
+        min(timestamp) as first_dump_upload,
+        min(case when db_billing_identity = "Free" then timestamp end) as first_dump_upload_free,
+        min(case when db_billing_identity = "GDS" then timestamp end) as first_dump_upload_gds,
+        min(case when db_billing_identity in ("Direct", "GCP") then timestamp end) as first_dump_upload_pro,
+   from `aura_usage_metrics.dump_file_uploads` du
+   join `aura_usage_metrics.canonical_database_list` l on du.owner = l.email
+  group by userkey
 
 -- Summarize live days
 ), live_days as (
@@ -274,6 +301,8 @@ select -- User metadata
        total_gb_hours_free,
        date(first_query_free) as first_query_free_date,
        date(first_load_free) as first_load_free_date,
+       date(first_programmatic_connection_free) as first_programmatic_connection_free,
+       date(first_dump_upload_free) as first_dump_upload_free,
        case when first_query_free is not null then 1 else 0 end as first_query_free,
        case when first_load_free is not null then 1 else 0 end as first_load_free,
 
@@ -287,6 +316,8 @@ select -- User metadata
        total_revenue_dollars_pro,
        date(first_query_pro) as first_query_pro_date,
        date(first_load_pro) as first_load_pro_date,
+       date(first_programmatic_connection_pro) as first_programmatic_connection_pro,
+       date(first_dump_upload_pro) as first_dump_upload_pro,
        case when first_query_pro is not null then 1 else 0 end as first_query_pro,
        case when first_load_pro is not null then 1 else 0 end as first_load_pro,
 
@@ -309,6 +340,8 @@ select -- User metadata
        total_gb_hours_gds,
        date(first_query_gds) as first_query_gds_date,
        date(first_load_gds) as first_load_gds_date,
+       date(first_programmatic_connection_gds) as first_programmatic_connection_gds,
+       date(first_dump_upload_gds) as first_dump_upload_gds,
        case when first_query_pro is not null then 1 else 0 end as first_query_gds,
        case when first_load_pro is not null then 1 else 0 end as first_load_gds,
 
@@ -323,6 +356,8 @@ select -- User metadata
   left join mp_attributes mp on u.email = mp.email
   left join first_query q on u.userkey = q.userkey
   left join first_load l on u.userkey =  l.userkey
+  left join first_programmatic_connection pc on u.userkey = pc.userkey
+  left join first_dump_upload du on u.userkey = du.userkey
   left join live_days a on u.userkey = a.userkey
   left join mrr_customer m on u.userkey = m.userkey
 )
