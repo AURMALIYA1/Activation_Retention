@@ -3,8 +3,10 @@
   Authors / Blame: Thao Duong, Stephen Fritz
 */
 
--- Mixpanel data from Pageview table
+-- Temporary table for review
 create table `data_experiments.unified_canonical_user_list` as
+
+-- Mixpanel data from Pageview table
 with mp_events as (
 select distinct distinct_id, 
        time, 
@@ -54,8 +56,8 @@ select *
  where time_rank = 1
 
 
+-- Aggregate DB data on the user level
 ), user_db_summary as (
--- Aggregate all dbs on the user level
 select userkey,
        string_agg(distinct(db_billing_identity),"," order by db_billing_identity) as channels,
        count(distinct dbid) as total_db_count,
@@ -102,6 +104,7 @@ select userkey,
  group by userkey
 
 
+-- Collect hourly usage & estimated billing info
 ), hourly_usage_by_tier as (
 select l.userkey,
        l.db_billing_identity,
@@ -111,8 +114,8 @@ select l.userkey,
   from `aura_usage_metrics.calculated_db_billing_per_hour` bh
   join `aura_usage_metrics.canonical_database_list` l on bh.dbid = l.dbid
  group by userkey,db_billing_identity,hour_of_day
+
 ), user_billing_summary as (
--- Fritz
 select userkey,
        sum(if(db_billing_identity = "Free",1,0)) as live_hours_free,
        sum(if(db_billing_identity = "Enterprise",1,0)) as live_hours_enterprise,
@@ -129,8 +132,8 @@ select userkey,
   from hourly_usage_by_tier
  group by userkey
 
+-- Collect users first query and first load timestamps:
 ), first_query as (
---first query and first load
 select l.userkey,
        min(minute) as first_query,
        min(case when db_billing_identity = "Free" then minute end) as first_query_free,
@@ -154,6 +157,7 @@ select l.userkey,
  group by userkey
 
 
+-- Summarize live days
 ), live_days as (
 -- Count of days where user had at least one DB live
 select userkey,
@@ -166,8 +170,8 @@ select userkey,
  group by userkey
 
 
+-- Summarize User Monthly Recurring Revenue data
 ), mrr_customer as (
--- become mrr_customer
 select email, 
        userkey,
        min(case when timestamp_diff(date_add(date_trunc(db_created_at, DAY), INTERVAL 1 DAY), db_created_at, HOUR) < 2 then date(date_add(date_trunc(db_created_at, DAY), INTERVAL 1 DAY)) else date(db_created_at) end) as mrr_customer_since,
@@ -178,10 +182,10 @@ select email,
  group by email,userkey
 
 
-), user_first_appearance as (
--- Get the first "PlanType" from the Datastore "User" snapshots
+-- Get the users first "PlanType" from the Datastore "User" snapshots
 -- Note that PlanType became a thing in Aug 2020. For all users with a "NULL"
 -- initial plan, we impute "self_serve"
+), user_first_appearance as (
 select replace(regexp_extract(__key__.path,r".*, (.*)"),'"','') as userkey,
        min(snapshottime) as mts
   from `neo4j-cloud-misc.aura_dsfs_exports.datastore_User_snapshots`
@@ -193,6 +197,7 @@ select replace(regexp_extract(__key__.path,r".*, (.*)"),'"','') as userkey,
   join user_first_appearance ufp on replace(regexp_extract(__key__.path,r".*, (.*)"),'"','') = ufp.userkey and snapshottime = mts
 
 
+-- Collate the final results
 ), final as (
 select -- User metadata
        distinct u.createdat as user_created_at,
