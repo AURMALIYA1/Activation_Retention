@@ -11,7 +11,7 @@ create table `data_experiments.unified_canonical_user_list` as
 -- Mixpanel data from Pageview table
 with mp_events as (
 select distinct distinct_id, 
-       time, 
+       mp_processing_time_ms, 
        device_id, 
        mp_country_code, 
        region, 
@@ -24,7 +24,7 @@ select distinct distinct_id,
  where project_id = "4cf820094a8c88a45ca1a474080590a2" -- universal prod
 UNION ALL 
 select distinct distinct_id, 
-       time, 
+       mp_processing_time_ms, 
        device_id, 
        mp_country_code, 
        region, 
@@ -39,15 +39,15 @@ select distinct distinct_id,
 
 ), mp_pageview as (
 select distinct m.email_address as email,
-       first_value(device_id) over (partition by email_address order by time) as device_id,
-       first_value(mp_country_code) over (partition by email_address order by time) as mp_country,
-       first_value(region) over (partition by email_address order by time) as mp_region,
-       first_value(utm_source) over (partition by email_address order by time) as utm_source,
-       first_value(utm_medium) over (partition by email_address order by time) as utm_medium,
-       first_value(utm_campaign) over (partition by email_address order by time) as utm_campaign,
-       first_value(initial_referrer) over (partition by email_address order by time) as initial_referrer,
-       first_value(initial_referring_domain) over (partition by email_address order by time) as initial_referring_domain,
-       rank() over (partition by email_address order by time) as time_rank
+       first_value(device_id) over (partition by email_address order by mp_processing_time_ms) as device_id,
+       first_value(mp_country_code) over (partition by email_address order by mp_processing_time_ms) as mp_country,
+       first_value(region) over (partition by email_address order by mp_processing_time_ms) as mp_region,
+       first_value(utm_source) over (partition by email_address order by mp_processing_time_ms) as utm_source,
+       first_value(utm_medium) over (partition by email_address order by mp_processing_time_ms) as utm_medium,
+       first_value(utm_campaign) over (partition by email_address order by mp_processing_time_ms) as utm_campaign,
+       first_value(initial_referrer) over (partition by email_address order by mp_processing_time_ms) as initial_referrer,
+       first_value(initial_referring_domain) over (partition by email_address order by mp_processing_time_ms) as initial_referring_domain,
+       rank() over (partition by email_address order by mp_processing_time_ms) as time_rank
   from `neo4j-cloud-misc.user_summary_tables.user_mapping_table` m
   join mp_events e on m.distinct_id = e.distinct_id
 
@@ -357,11 +357,11 @@ select -- User metadata
 
     -- logs
        case when total_db_count is NULL then 0 else 1 end as status_db_created,
-       case when first_query is null then 0 else 1 end as status_activation,
-       case when first_load is null then 0 else 1 end as status_load_data,
-       case when first_dump_upload is null then 0 else 1 end as status_load_dumpfile,
-       case when first_programmatic_connection is null then 0 else 1 end as status_programmatic_connection,
-       case when first_tools_connection is null then 0 else 1 end as status_tools_connection,
+       case when first_query is null then 0 else 1 end as status_first_query,
+       case when first_load is null then 0 else 1 end as status_first_load,
+       case when first_dump_upload is null then 0 else 1 end as status_first_dump_upload,
+       case when first_programmatic_connection is null then 0 else 1 end as status_first_programmatic_connection,
+       case when first_tools_connection is null then 0 else 1 end as status_first_tools_connection,
        ifnull(total_db_count,0) as total_db_count,
        ifnull(live_db_count,0) as live_db_count,
        start_date,
